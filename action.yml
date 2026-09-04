@@ -1,0 +1,54 @@
+name: Readme Claim Check
+author: ironiclawdoctor-design
+description: Fail when README claims Marketplace, pip install, or gh extension without matching files.
+branding:
+  icon: search
+  color: orange
+inputs:
+  readme:
+    description: Path to the README to scan
+    required: false
+    default: README.md
+runs:
+  using: composite
+  steps:
+    - name: Check README claims against files
+      shell: bash
+      env:
+        README_PATH: ${{ inputs.readme }}
+      run: |
+        set -euo pipefail
+        f="${README_PATH}"
+        if [ ! -f "$f" ]; then
+          echo "No $f found. Nothing to claim. Pass."
+          exit 0
+        fi
+        fail=0
+        lower=$(tr '[:upper:]' '[:lower:]' < "$f")
+        if echo "$lower" | grep -Eq 'github marketplace|marketplace product|marketplace ready'; then
+          if [ ! -f action.yml ] && [ ! -f action.yaml ]; then
+            echo "::error::$f mentions Marketplace but this repo has no action.yml"
+            fail=1
+          fi
+        fi
+        if echo "$lower" | grep -Eq 'gh extension install'; then
+          if [ ! -d .github ] || ! find . -name 'gh-extension*' -o -name '*.go' | head -1 | grep -q .; then
+            if [ ! -f .github/workflows/release.yml ] && [ ! -d src ]; then
+              echo "::warning::$f mentions gh extension install; no extension layout found"
+            fi
+          fi
+        fi
+        if echo "$lower" | grep -Eq 'pip install [a-z0-9_-]+'; then
+          if [ ! -f pyproject.toml ] && [ ! -f setup.py ] && [ ! -f setup.cfg ]; then
+            echo "::error::$f mentions pip install but there is no pyproject.toml or setup.py"
+            fail=1
+          fi
+        fi
+        if echo "$f" | grep -q . && echo "$lower" | grep -Eq 'v9999999|\\$39/month' ; then
+          echo "::warning::Costume version or price in README. Cut the claim or ship the file."
+        fi
+        if [ "$fail" -ne 0 ]; then
+          echo "Claim check failed. Origin first. Files before slogans."
+          exit 1
+        fi
+        echo "Claim check passed."
